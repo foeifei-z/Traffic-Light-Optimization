@@ -1,112 +1,125 @@
 #include <stdio.h>
+#include <stdbool.h>
 
-// ==========================================
-// 1. 定义13条路线（对应你图上的圈圈节点）
-// ==========================================
-char* routes[13] = {
-    "A->B", "A->C", "A->D", 
-    "B->A", "B->C", "B->D", 
-    "D->A", "D->B", "D->C", 
-    "E->A", "E->B", "E->C", "E->D"
+#define TOTAL_ROUTES 13 // 总共 13 条路线
+#define MAX_COLORS 4    // 最大相位数
+
+// 路线名称映射 (按图例字母排序)
+const char* route_names[TOTAL_ROUTES] = {
+    "AB", "AC", "AD", "BA", "BC", "BD", "DA", "DB", "DC", "EA", "EB", "EC", "ED"
 };
 
-// ==========================================
-// 2. 冲突矩阵（对应你左边图上的连线）
-// 1 表示冲突（不能同时走），0 表示不冲突（可以一起走）
-// ==========================================
-int conflict[13][13] = {
-    //   0  1  2  3  4  5  6  7  8  9 10 11 12
-    // 0:A->B
-    {0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0},
-    // 1:A->C
-    {1, 0, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 1},
-    // 2:A->D
-    {1, 1, 0, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1},
-    // 3:B->A
-    {0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 0, 1, 0},
-    // 4:B->C
-    {1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 1},
-    // 5:B->D
-    {1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 1, 0},
-    // 6:D->A
-    {0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0},
-    // 7:D->B
-    {1, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0},
-    // 8:D->C
-    {1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1},
-    // 9:E->A
-    {0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 1, 1},
-    // 10:E->B
-    {1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0, 1, 1},
-    // 11:E->C
-    {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1},
-    // 12:E->D
-    {0, 1, 1, 0, 1, 0, 0, 0, 1, 1, 1, 1, 0}
+// 路线索引定义，方便代码阅读
+enum {
+    IDX_AB, IDX_AC, IDX_AD, IDX_BA, IDX_BC, IDX_BD, 
+    IDX_DA, IDX_DB, IDX_DC, IDX_EA, IDX_EB, IDX_EC, IDX_ED
 };
 
-int main() {
-    printf("--- 五岔路口交通灯相位自动计算程序 ---\n\n");
+// 存储每条路线的最终相位分配
+int colors[TOTAL_ROUTES];
 
-    int phase[13]; // 记录每条路线分配到第几个相位
-    for (int i = 0; i < 13; i++) {
-        phase[i] = -1; // -1 表示还没分配
+// 根据最后一张图的连线，定义剩余6个点（BC, BD, DA, DB, EB, EC）的冲突矩阵
+// 顺序：BC, BD, DA, DB, EB, EC
+int conflict_matrix[6][6] = {
+    // BC BD DA DB EB EC
+    { 0, 0, 1, 0, 1, 0 }, // BC 冲突于 DA, EB
+    { 0, 0, 1, 1, 0, 0 }, // BD 冲突于 DA, DB
+    { 1, 1, 0, 0, 1, 0 }, // DA 冲突于 BC, BD, EB
+    { 0, 1, 0, 0, 1, 1 }, // DB 冲突于 BD, EB, EC
+    { 1, 0, 1, 1, 0, 0 }, // EB 冲突于 BC, DA, DB
+    { 0, 0, 0, 1, 0, 0 }  // EC 冲突于 DB
+};
+
+// 剩余6个点的原始索引
+int remaining_indices[6] = { IDX_BC, IDX_BD, IDX_DA, IDX_DB, IDX_EB, IDX_EC };
+
+// 检查给剩余节点中的第 node 个分配 color 是否合法
+bool is_safe(int node, int color) {
+    for (int i = 0; i < 6; i++) {
+        if (conflict_matrix[node][i] == 1 && colors[remaining_indices[i]] == color) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// 贪心着色算法
+void greedy_coloring_remaining() {
+    // 初始化这6个点的颜色
+    for (int i = 0; i < 6; i++) {
+        colors[remaining_indices[i]] = 0;
     }
 
-    // ==========================================
-    // 3. 算法核心：自动遍历并分组
-    // ==========================================
-    int total_phases = 0;
-
-    // 遍历每一条路线（对应你手写图的节点）
-    for (int i = 0; i < 13; i++) {
-        
-        // 尝试把这条路放进现有的相位里
-        int assigned = 0; // 标记是否分配成功
-
-        // 从第1个相位开始尝试，最多尝试到第13个相位
-        for (int p = 0; p < 13 && !assigned; p++) {
-            
-            int can_use_this_phase = 1; // 假设当前相位可以使用
-
-            // 检查当前相位里，有没有跟路线 i 冲突的路线
-            for (int j = 0; j < i; j++) {
-                // 如果路线 j 已经在相位 p 中，并且与路线 i 冲突
-                if (phase[j] == p && conflict[i][j] == 1) {
-                    can_use_this_phase = 0; // 冲突了，这个相位不能用
-                    break;
-                }
-            }
-
-            // 如果这个相位安全，就把它分配进去
-            if (can_use_this_phase) {
-                phase[i] = p; 
-                assigned = 1; // 标记已分配
-                
-                // 更新总相位数
-                if (p + 1 > total_phases) {
-                    total_phases = p + 1;
-                }
+    // 为这 6 个节点分配颜色
+    for (int i = 0; i < 6; i++) {
+        // 从颜色 2 开始尝试（颜色 1 已经被 AB/AC/AD 占用，且 EA 不能与 1 冲突）
+        for (int c = 2; c <= MAX_COLORS; c++) {
+            if (is_safe(i, c)) {
+                colors[remaining_indices[i]] = c;
+                break; 
             }
         }
     }
+}
 
-    // ==========================================
-    // 4. 打印最终结果（会自动排版成你手写的4个相位）
-    // ==========================================
-    printf("算法自动计算得出：最少需要 %d 个交通灯相位\n", total_phases);
-    printf("=========================================\n");
+// 打印结果
+void print_results() {
+    int max_color = 0;
+    printf("--- 五岔路口交通灯相位优化方案 ---\n\n");
+    
+    // 1. 明确区分 EA 和 完全不受限的右转线
+    printf("【完全不受灯控限制路线】（可随意通行）:\n");
+    printf("  BA, DC, ED\n\n");
 
-    for (int p = 0; p < total_phases; p++) {
-        printf("【相位 %d（绿灯）】: ", p + 1);
-        for (int i = 0; i < 13; i++) {
-            if (phase[i] == p) {
-                printf("%s  ", routes[i]);
+    printf("【受相位1限制的特殊路线】（只能在相位 2,3,4 通行）:\n");
+    printf("  EA\n\n");
+
+    // 2. 颜色 1 组
+    printf("【相位 1】:\n");
+    printf("  AB, AC, AD\n\n");
+
+    // 3. 剩余 6 个点的分配情况
+    printf("【剩余6个顶点的贪心着色结果】:\n");
+    for (int i = 0; i < 6; i++) {
+        int idx = remaining_indices[i];
+        printf("  路线 %-3s 分配相位: %d\n", route_names[idx], colors[idx]);
+        if (colors[idx] > max_color) {
+            max_color = colors[idx];
+        }
+    }
+
+    // 4. 按相位分组打印
+    printf("\n--- 相位分组汇总 ---\n");
+    for (int c = 1; c <= max_color; c++) {
+        printf("相位 %d 包含路线: ", c);
+        
+        // 相位1 包含固定的三个和 EA 的排除逻辑
+        if (c == 1) {
+            printf("AB AC AD ");
+            // 注意：此处刻意不打印 EA，因为 EA 不能在相位1通行
+        } else {
+            // 相位 2,3,4 可以包含 EA (由于它此时相当于孤立点，不会与其他冲突)
+            printf("EA "); 
+        }
+        
+        // 打印剩余6个点中符合条件的
+        for (int i = 0; i < 6; i++) {
+            if (colors[remaining_indices[i]] == c) {
+                printf("%s ", route_names[remaining_indices[i]]);
             }
         }
         printf("\n");
     }
-
-    printf("\n结论：按以上 %d 个相位循环亮绿灯，即可保障安全通行。\n", total_phases);
-    return 0;
+    
+    printf("（注：BA, DC, ED 不受灯控限制；EA 仅在相位 1 时禁止通行）\n");
+    printf("\n最少需要的相位总数为: %d\n", max_color);
 }
 
+int main() {
+    printf("开始计算交通灯相位分配...\n\n");
+    
+    greedy_coloring_remaining();
+    print_results();
+
+    return 0;
+}
