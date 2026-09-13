@@ -1,82 +1,93 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdbool.h>
 
-//13条通行路线名称
-char* pathName[] = {
-    "AB", "AC", "AD",
-    "BA", "BC", "BD",
-    "DA", "DB", "DC",
-    "EA", "EB", "EC", "ED"
+// 定义13条路线的名称
+const char *route_names[] = {
+    "AB", "AC", "AD", "BA", "BC", "BD",
+    "DA", "DB", "DC", "EA", "EB", "EC", "ED"
 };
+#define N 13 // 路线总数
 
-//邻接矩阵：1代表两条路线冲突，不能同时放行；0代表不冲突
-int conflict[13][13] = {
-    //AB   AC   AD   BA   BC   BD   DA   DB   DC   EA   EB   EC   ED
-    {0, 0, 0, 0, 1, 1, 1, 0, 0, 1, 0, 0, 0}, //AB 0
-    {0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1}, //AC 1
-    {0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1}, //AD 2
-    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, //BA 3 右转，无冲突孤立点
-    {1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0}, //BC 4
-    {1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 0}, //BD 5
-    {1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0}, //DA 6
-    {0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1}, //DB 7
-    {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, //DC 8 右转，孤立点
-    {1, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0}, //EA 9
-    {0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 1}, //EB 10
-    {0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1}, //EC 11
-    {0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0}  //ED 12 右转，孤立点
-};
+// 冲突矩阵：adj[i][j] = 1 表示路线 i 和 j 冲突
+int adj[N][N] = {0};
 
-int color[13]; //存储每个路线分配的相位（颜色）
+// 初始化冲突关系（根据图片中的连线手动构建）
+void init_conflicts() {
+    // 为了方便，我们用索引对应路线：
+    // 0:AB, 1:AC, 2:AD, 3:BA, 4:BC, 5:BD, 6:DA, 7:DB, 8:DC, 9:EA, 10:EB, 11:EC, 12:ED
 
-//贪心图着色算法
-void graphColoring()
-{
-    int v,i,c;
-    memset(color, -1, sizeof(color));
-    int used[13];
-    for (v = 0; v < 13; v++)
-    {
-        memset(used, 0, sizeof(used));
-        //标记与当前路线冲突的路线已经占用的颜色
-        for (i = 0; i < 13; i++)
-        {
-            if (conflict[v][i] == 1 && color[i] != -1)
-            {
-                used[color[i]] = 1;
-            }
-        }
-        //寻找最小可用颜色
-        for (c = 0; c < 13; c++)
-        {
-            if (!used[c]) break;
-        }
-        color[v] = c;
+    // 根据图片，BA(3), DC(8), ED(12) 是孤立点，没有连线。
+    // 第1组：AB(0), AC(1), AD(2) 之间无连线，但它们与以下点有连线：
+    // 连线（冲突）：
+    // AB(0) 与 BC(4), BD(5), DA(6), DB(7), EB(10), EC(11) 相连（图中大圈连线）
+    // AC(1) 与 BC(4), BD(5), DA(6), DB(7), EB(10), EC(11) 相连
+    // AD(2) 与 BC(4), BD(5), DA(6), DB(7), EB(10), EC(11) 相连
+
+    // 剩余 6 个点内部连线：
+    // BC(4) - DA(6), DB(7)
+    // BD(5) - DA(6), DB(7), EC(11)
+    // DA(6) - EB(10), EC(11)
+    // DB(7) - EB(10), EC(11)
+    // EB(10) - BD(5), DB(7)
+    // EC(11) - BD(5), DA(6)
+    // EA(9) 原本与 AB, AC, AD 相连，去掉第1组后，EA 无连线。
+
+    // 填充矩阵（对称）
+    int pairs[][2] = {
+        {0,4},{0,5},{0,6},{0,7},{0,10},{0,11},
+        {1,4},{1,5},{1,6},{1,7},{1,10},{1,11},
+        {2,4},{2,5},{2,6},{2,7},{2,10},{2,11},
+        {4,6},{4,7},
+        {5,6},{5,7},{5,11},
+        {6,10},{6,11},
+        {7,10},{7,11},
+        {10,5},{10,7},
+        {11,5},{11,6},
+        {9,0},{9,1},{9,2} // EA 与第1组冲突
+    };
+    int i;
+    for (i = 0; i < sizeof(pairs)/sizeof(pairs[0]); i++) {
+        adj[pairs[i][0]][pairs[i][1]] = 1;
+        adj[pairs[i][1]][pairs[i][0]] = 1;
     }
 }
 
-int main()
-{
-    printf("===== 五岔路口交通线路通行分组=====\n");
-    graphColoring();
+int color[N]; // 存储每个顶点的颜色（组号）
 
-    //4个相位，和图片完全对应
-    printf("\n【相位1（颜色1）绿灯通行】：AB AC AD\n");
-    printf("【相位2（颜色2）绿灯通行】：BC BD\n");
-    printf("【相位3（颜色3）绿灯通行】：DA DB\n");
-    printf("【相位4（颜色4）绿灯通行】：EB EC\n");
+int main() {
+    init_conflicts();
+    memset(color, -1, sizeof(color)); // -1 表示未着色
 
-    printf("\不受灯控右转线路（孤立顶点，任意相位均可通行）：BA DC ED\n");
-    printf("EA线路：除相位1外，相位2、3、4均可通行\n");
+    int current_color = 1;
+    int i, j, k;
+    // 贪心着色
+    for (i = 0; i < N; i++) {
+        if (color[i] != -1) continue; // 已着色
+        color[i] = current_color;
+        for (j = i + 1; j < N; j++) {
+            if (color[j] == -1) {
+                bool conflict = false;
+                for (k = 0; k < N; k++) {
+                    if (color[k] == current_color && adj[j][k]) {
+                        conflict = true; break;
+                    }
+                }
+                if (!conflict) color[j] = current_color;
+            }
+        }
+        current_color++;
+    }
 
-    printf("\n===== 分组步骤=====\n");
-    printf("1. 三个孤立顶点(右转线路BA,DC,ED)不受灯控，直接移除\n");
-    printf("2. AB、AC、AD 染颜色1（相位1），移除顶点与关联边\n");
-    printf("3. EA成为孤立点，除相位1外其余相位可通行，移除\n");
-    printf("4. 剩余6个顶点两两分组，BC&BD(2)，DA&DB(3)，EB&EC(4)\n");
-    printf(" 最终方案：循环4个相位放行，保证路口无冲突、安全通行\n");
-
-    printf("\n[Process completed - press Enter]");
-    getchar();
+    // 输出分组结果
+    int c;
+    printf("交通灯分组方案：\n");
+    for (c = 1; c < current_color; c++) {
+        printf("第 %d 组（颜色 %d）：", c, c);
+        for (i = 0; i < N; i++) {
+            if (color[i] == c) printf("%s ", route_names[i]);
+        }
+        printf("\n");
+    }
     return 0;
 }
